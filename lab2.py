@@ -14,18 +14,14 @@ from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import numpy as np
-import os
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
-
-
-# Set OMP_NUM_THREADS to 1 to avoid memory leak issues with KMeans on Windows
-os.environ["OMP_NUM_THREADS"] = "2"
 
 
 #load the olivetti faces dataset
 X , y = fetch_olivetti_faces(return_X_y=True)
 
+#split the data into training 70% , validation 15% and test 15%
 X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, stratify=y, random_state=42)
 X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42)
 
@@ -61,6 +57,16 @@ for train_index, val_index in skf.split(X_train, y_train):
 # Average accuracy across the folds
 average_accuracy = sum(accuracies) / len(accuracies)
 print(f"Average accuracy across 5 folds: {average_accuracy:.4f}")
+
+# Train the final model on the full training data
+classifier.fit(X_train, y_train)
+
+# Predict on the validation set
+y_val_pred = classifier.predict(X_val)
+
+# Calculate accuracy on the validation set
+validation_accuracy = accuracy_score(y_val, y_val_pred)
+print(f"Validation set accuracy: {validation_accuracy:.4f}")
 
 
 # Determine the optimal number of clusters using silhouette score
@@ -103,20 +109,30 @@ y_val_pred_reduced = classifier.predict(X_val_reduced)
 accuracy_reduced = accuracy_score(y_val, y_val_pred_reduced)
 print(f"Validation accuracy on reduced set: {accuracy_reduced:.4f}")
 
+# Standardize the data
 X_scaled = StandardScaler().fit_transform(X)
+
+# Perform PCA to reduce dimensions
 pca = PCA(n_components=100)  # Reduce to 100 components
 X_pca = pca.fit_transform(X_scaled)
 
-db = DBSCAN(eps=50, min_samples=6).fit(X_scaled)
+# Apply DBSCAN
+db = DBSCAN(eps=50, min_samples=6, metric='euclidean',).fit(X_pca)
 labels = db.labels_
 
-# Number of clusters in labels, ignoring noise if present.
+# Number of clusters in labels, ignoring noise if present
 n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
 n_noise_ = list(labels).count(-1)
 
-print("Estimated number of clusters: %d" % n_clusters_)
-print("Estimated number of noise points: %d" % n_noise_)
+# Calculate silhouette score
+if n_clusters_ > 1:  # Silhouette score is only defined for clusters > 1
+    silhouette_avg = silhouette_score(X_pca, labels)
+else:
+    silhouette_avg = -1  # Assign a default score for cases with a single cluster or noise only
 
-silhouette_avg = silhouette_score(X_pca, labels)
-print(f"Silhouette Score: {silhouette_avg:.4f}")
+
+print(f"Estimated number of clusters: {n_clusters_}")
+print(f"Estimated number of noise points: {n_noise_}")
+print(f"Silhouette Score: {silhouette_avg:.4f}\n")
+
 
